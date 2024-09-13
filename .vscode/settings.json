@@ -1,7 +1,10 @@
 {
 	"cSpell.words": [
 		"Adafruit",
+		"FSPI",
 		"Futaba",
+		"HSPI",
+		"INITR",
 		"SCLK"
 	],
 	"C_Cpp.errorSquiggles": "enabled"

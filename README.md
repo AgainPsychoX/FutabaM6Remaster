@@ -24,6 +24,8 @@
 
 Interesting:
 + https://community.platformio.org/t/new-esp32-s3-n16r8/41568/4
++ https://electronoobs.com/eng_robotica_tut4_2.php
++ https://github.com/atomic14/esp32-s3-pinouts
 
 ### To do
 

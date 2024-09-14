@@ -3,6 +3,10 @@
 #include <Adafruit_ST7735.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include "common/packets.hpp"
+
+////////////////////////////////////////////////////////////////////////////////
+// Hardware
 
 SPIClass tft_spi(FSPI);
 SPIClass radio_spi(HSPI);
@@ -40,30 +44,12 @@ const uint8_t transmitterInputAddress[6]  = "info?";
 #define BUZZER_PIN      47
 
 ////////////////////////////////////////////////////////////////////////////////
+// State
 
-enum class PacketType : uint8_t
-{
-	Unknown = 0,
-	Control = 1,
-	BatteryQuery = 2,
-};
-
-struct ControlPacket
-{
-	PacketType packetType = PacketType::Control;
-	uint8_t aux1;
-	uint8_t aux2;
-	uint8_t aux3;
-	uint16_t throttle;
-	uint16_t rudder;
-	uint16_t elevator;
-	uint16_t aileron;
-	uint16_t channel5;
-};
-
-ControlPacket data;
+TransmitterSignal txSignal;
 
 ////////////////////////////////////////////////////////////////////////////////
+// Setup
 
 void setup()
 {
@@ -100,7 +86,7 @@ void setup()
 	radio.setPALevel(RF24_PA_MAX);
 	radio.setAutoAck(false);
 	radio.setRetries(0, 0);
-	radio.setPayloadSize(16);
+	radio.setPayloadSize(staticPayloadSize);
 	radio.setCRCLength(RF24_CRC_8);
 	radio.openReadingPipe(1, transmitterInputAddress);
 	radio.openWritingPipe(transmitterOutputAddress);
@@ -108,18 +94,19 @@ void setup()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Loop
 
 void loop()
 {
-	data.aux1     = digitalRead(AUX_1_PIN);
-	data.aux2     = digitalRead(AUX_2_PIN);
-	data.aux3     = digitalRead(AUX_3_PIN);
-	data.throttle = analogRead(THROTTLE_PIN);
-	data.rudder   = analogRead(RUDDER_PIN);
-	data.elevator = analogRead(ELEVATOR_PIN);
-	data.aileron  = analogRead(AILERON_PIN);
-	data.channel5 = analogRead(CHANNEL_5_PIN);
-	radio.write(&data, sizeof(data));
+	txSignal.controlPacket.throttle = analogRead(THROTTLE_PIN);
+	txSignal.controlPacket.rudder   = analogRead(RUDDER_PIN);
+	txSignal.controlPacket.elevator = analogRead(ELEVATOR_PIN);
+	txSignal.controlPacket.aileron  = analogRead(AILERON_PIN);
+	txSignal.controlPacket.channel5 = analogRead(CHANNEL_5_PIN);
+	txSignal.controlPacket.aux1     = digitalRead(AUX_1_PIN);
+	txSignal.controlPacket.aux2     = digitalRead(AUX_2_PIN);
+	txSignal.controlPacket.aux3     = digitalRead(AUX_3_PIN);
+	radio.write(&txSignal, sizeof(txSignal));
 
 	tft.fillScreen(ST77XX_BLACK);
 	tft.setTextColor(ST77XX_WHITE);
@@ -134,17 +121,17 @@ void loop()
 		"aux2=%u\n"
 		"aux3=%u\n"
 		"f1=%u\n",
-		data.throttle,
-		data.rudder,
-		data.elevator,
-		data.aileron,
-		data.channel5,
-		data.aux1,
-		data.aux2,
-		data.aux3,
+		txSignal.controlPacket.throttle,
+		txSignal.controlPacket.rudder,
+		txSignal.controlPacket.elevator,
+		txSignal.controlPacket.aileron,
+		txSignal.controlPacket.channel5,
+		txSignal.controlPacket.aux1,
+		txSignal.controlPacket.aux2,
+		txSignal.controlPacket.aux3,
 		digitalRead(F1_PIN)
 	);
 	delay(2);
 
-	digitalWrite(BUZZER_PIN, data.throttle > 1600 ? HIGH : LOW);
+	digitalWrite(BUZZER_PIN, txSignal.controlPacket.throttle > 1600 ? HIGH : LOW);
 }

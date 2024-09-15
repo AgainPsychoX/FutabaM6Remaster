@@ -129,6 +129,13 @@ void goNextPage()
 unsigned long f1ButtonPressed = 0; // 0 means not pressed
 
 TransmitterSignal txSignal;
+ReceiverSignal rxSignal;
+
+unsigned long lastTxSignalTime = 0;
+unsigned long lastRxSignalTime = 0;
+constexpr unsigned int rxSignalFetchInterval = 500; // ms
+constexpr unsigned int rxSignalListenDuration = 20; // ms
+unsigned long lastRxSignalLastLatency = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Setup
@@ -144,6 +151,7 @@ void setup()
 	pinMode(ELEVATOR_PIN,   INPUT);
 	pinMode(AILERON_PIN,    INPUT);
 	pinMode(CHANNEL_5_PIN,  INPUT);
+	pinMode(TRANSMITTER_BATTERY_PIN, INPUT);
 	pinMode(AUX_1_PIN,      INPUT_PULLUP);
 	pinMode(AUX_2_PIN,      INPUT_PULLUP);
 	pinMode(AUX_3_PIN,      INPUT_PULLUP);
@@ -189,8 +197,12 @@ void setup()
 ////////////////////////////////////////////////////////////////////////////////
 // Loop
 
-void sendSignal()
+void loop()
 {
+	unsigned long now = millis();
+
+	// Send transmitter signal
+	txSignal.packetType = PacketType::Control;
 	txSignal.controlPacket.throttle = analogRead(THROTTLE_PIN);
 	txSignal.controlPacket.rudder   = analogRead(RUDDER_PIN);
 	txSignal.controlPacket.elevator = analogRead(ELEVATOR_PIN);
@@ -199,16 +211,32 @@ void sendSignal()
 	txSignal.controlPacket.aux1     = digitalRead(AUX_1_PIN);
 	txSignal.controlPacket.aux2     = digitalRead(AUX_2_PIN);
 	txSignal.controlPacket.aux3     = digitalRead(AUX_3_PIN);
+	txSignal.controlPacket.requestingStatus = now - lastRxSignalTime > rxSignalFetchInterval;
 	radio.write(&txSignal, sizeof(txSignal));
-}
+	lastTxSignalTime = now;
 
-void loop()
-{
-	sendSignal();
+	if (txSignal.controlPacket.requestingStatus) {
+		radio.startListening();
+		unsigned long listenStartTime = millis();
+		do {
+			now = millis();
+			if (radio.available()) {
+				radio.read(&rxSignal, sizeof(rxSignal));
+				lastRxSignalTime = now;
+				lastRxSignalLastLatency = now - listenStartTime;
+				break;
+			}
+		}
+		while (now - listenStartTime < rxSignalListenDuration);
+		radio.stopListening();
+	}
 
 	digitalWrite(BUZZER_PIN, txSignal.controlPacket.throttle > 1600 ? HIGH : LOW);
 
-	unsigned long now = millis();
+	// Transmitter battery uses 15V to 3.235V divider (12kOhm & 3.3kOhm),
+	// ESP32S3 has 12-bit ADC.
+	constexpr float txBatteryFactor = 3.235 / 4095.0 * (12000.0 + 3300.0) / 3300.0;
+	uint16_t txBatteryRaw = analogRead(TRANSMITTER_BATTERY_PIN);
 
 	bool wasLongPress = false;
 	if (f1ButtonPressed) {
@@ -239,11 +267,14 @@ void loop()
 	switch (page) {
 		case Page::Info: {
 			tft.printf(
-				"Bateria nadajnika: 12.3V\n"
-				"Bateria odbiornika: 12.3V\n"
-				"Jakosc sygnalu: 40\n"
+				"Bateria nadajnika: %.2fV\n"
+				"Bateria odbiornika: %.2fV\n"
+				"Jakosc sygnalu: %hhu\n",
+				txBatteryFactor * txBatteryRaw,
+				rxSignal.statusPacket.battery, // Note: assuming it's always status packet
+				rxSignal.statusPacket.signalRating
 			);
-			// TODO: make it actually work and look nice
+			// TODO: make it actually look nice
 			break;
 		}
 		case Page::Raw: {

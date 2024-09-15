@@ -23,7 +23,7 @@ struct SignalStabilityCounter
 
 	unsigned long lastUpdateTime = 0;
 	
-	unsigned long timeSinceLastTransmitterSignalSums = 0;
+	unsigned long timeSinceLastTxSignalSums = 0;
 	
 	uint16_t goodCount = 0;
 	uint16_t weakCount = 0;
@@ -61,14 +61,14 @@ struct SignalStabilityCounter
 					(goodCount + weakCount),
 					100 * (goodCount + weakCount) / averageCountForInterval,
 					100 * (goodCount) / (goodCount + weakCount),
-					timeSinceLastTransmitterSignalSums / (goodCount + weakCount),
+					timeSinceLastTxSignalSums / (goodCount + weakCount),
 					lastRating,
 					radio.failureDetected
 				);
 	// #endif
 #endif
 
-				timeSinceLastTransmitterSignalSums = 0;
+				timeSinceLastTxSignalSums = 0;
 				goodCount = 0;
 				weakCount = 0;
 			}
@@ -77,10 +77,11 @@ struct SignalStabilityCounter
 };
 SignalStabilityCounter signalStability;
 
-unsigned long lastTransmitterSignalTime = 0;
-
 TransmitterSignal txSignal;
-ReceiverSignal receiverSignal;
+ReceiverSignal rxSignal;
+
+unsigned long lastTxSignalTime = 0;
+unsigned long lastRxSignalTime = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Setup
@@ -93,6 +94,9 @@ void setup()
 	Serial.begin(115200);
 	Serial.println(F("Setup!"));
 	fdevopen(&serial_putc, 0);
+
+	// Set pin modes
+	pinMode(RECEIVER_BATTERY_PIN, INPUT);
 
 	// Initialize radio and start listening to allow read
 	radio.begin();  
@@ -117,41 +121,69 @@ void loop()
 	
 	// Receive transmitter signal
 	if (radio.available()) {
-		unsigned long timeSinceLastTransmitterSignal = millis() - lastTransmitterSignalTime;
-		lastTransmitterSignalTime = millis();
+		unsigned long timeSinceLastTxSignal = millis() - lastTxSignalTime;
+		lastTxSignalTime = millis();
 
 		radio.read(&txSignal, sizeof(txSignal));
 		
 		signalStability.probe();
-		signalStability.timeSinceLastTransmitterSignalSums += timeSinceLastTransmitterSignal;
+		signalStability.timeSinceLastTxSignalSums += timeSinceLastTxSignal;
 
-		printf(
-			"time=%lu\t"
-			"signalRating=%u\t"
-			"testRPD=%u\t"
-			"timeSinceLastTxSignal=%lu\t"
-			"throttle=%hu\t"
-			"rudder=%hu\t"
-			"elevator=%hu\t"
-			"aileron=%hu\t"
-			"channel5=%hu\t"
-			"aux1=%u\t"
-			"aux2=%u\t"
-			"aux3=%u\t"
-			"battery=%u\n",
-			millis(), 
-			signalStability.lastRating,
-			radio.testRPD(),
-			timeSinceLastTransmitterSignal,
-			txSignal.controlPacket.throttle,
-			txSignal.controlPacket.rudder,
-			txSignal.controlPacket.elevator,
-			txSignal.controlPacket.aileron,
-			txSignal.controlPacket.channel5,
-			txSignal.controlPacket.aux1,
-			txSignal.controlPacket.aux2,
-			txSignal.controlPacket.aux3,
-			analogRead(RECEIVER_BATTERY_PIN)
-		);
+		if (txSignal.packetType == PacketType::Control) {
+			if (txSignal.controlPacket.requestingStatus) {
+				txSignal.controlPacket.requestingStatus = false; // to avoid sending
+				radio.stopListening();
+				rxSignal.packetType = PacketType::Status;
+				rxSignal.statusPacket.battery = (5.f * analogRead(RECEIVER_BATTERY_PIN) / 1023) * 3;
+				rxSignal.statusPacket.signalRating = signalStability.lastRating;
+				rxSignal.statusPacket.goodSignal = 50 < 
+					(100 * (signalStability.goodCount) / (signalStability.goodCount + signalStability.weakCount));
+				radio.write(&rxSignal, sizeof(rxSignal));
+				radio.startListening();
+				lastRxSignalTime = millis();
+				printf(
+					"time=%lu\t"
+					"Sent StatusPacket!\t"
+					"battery=%.2f\t"
+					"signalRating=%u\t"
+					"goodSignal=%u\t"
+					"\n",
+					lastRxSignalTime,
+					rxSignal.statusPacket.battery, // TODO: prints '?', most likely printf here has no floating support
+					rxSignal.statusPacket.signalRating,
+					rxSignal.statusPacket.goodSignal
+				);
+			}
+
+			// For now just print it all out
+			printf(
+				"time=%lu\t"
+				"signalRating=%u\t"
+				"testRPD=%u\t"
+				"timeSinceLastTxSignal=%lu\t"
+				"throttle=%hu\t"
+				"rudder=%hu\t"
+				"elevator=%hu\t"
+				"aileron=%hu\t"
+				"channel5=%hu\t"
+				"aux1=%u\t"
+				"aux2=%u\t"
+				"aux3=%u\t"
+				"battery=%u\n",
+				millis(), 
+				signalStability.lastRating,
+				radio.testRPD(),
+				timeSinceLastTxSignal,
+				txSignal.controlPacket.throttle,
+				txSignal.controlPacket.rudder,
+				txSignal.controlPacket.elevator,
+				txSignal.controlPacket.aileron,
+				txSignal.controlPacket.channel5,
+				txSignal.controlPacket.aux1,
+				txSignal.controlPacket.aux2,
+				txSignal.controlPacket.aux3,
+				analogRead(RECEIVER_BATTERY_PIN)
+			);
+		}
 	}
 }

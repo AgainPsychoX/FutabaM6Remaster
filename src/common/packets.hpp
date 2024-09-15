@@ -53,7 +53,7 @@ struct StatusPacket
 		uint8_t flags;
 	};
 	uint8_t signalRating;
-	uint16_t battery;
+	float battery;
 };
 
 struct ReceiverSignal

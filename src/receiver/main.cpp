@@ -11,7 +11,7 @@ RF24 radio(7, 8);
 const uint8_t transmitterOutputAddress[6] = "ctrl!";
 const uint8_t transmitterInputAddress[6]  = "info?";
 
-#define PIN_BATTERY A7
+#define RECEIVER_BATTERY_PIN A7
 
 ////////////////////////////////////////////////////////////////////////////////
 // State
@@ -151,7 +151,7 @@ void loop()
 			txSignal.controlPacket.aux1,
 			txSignal.controlPacket.aux2,
 			txSignal.controlPacket.aux3,
-			analogRead(PIN_BATTERY)
+			analogRead(RECEIVER_BATTERY_PIN)
 		);
 	}
 }

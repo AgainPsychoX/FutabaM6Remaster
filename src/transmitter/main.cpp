@@ -51,47 +51,47 @@ const uint8_t transmitterInputAddress[6]  = "info?";
 
 struct Settings
 {
-	////////////////////////////////////////
-	// 0x000 - 0x010: Checksum
+	static constexpr uint32_t currentVersion = 2;
 
-	uint8_t _emptyBeginPad[12];
+	////////////////////////////////////////
+	// 0x000 - 0x010: Header
+
+	uint8_t _emptyBeginPad[8];
+	uint32_t version;
 	uint32_t checksum;
 
-	uint32_t calculateChecksum() {
+	uint32_t calculateChecksum()
+	{
 		constexpr uint16_t prefixLength = offsetof(Settings, checksum) + sizeof(checksum);
 		return crc32_le(0, reinterpret_cast<uint8_t*>(this) + prefixLength, sizeof(Settings) - prefixLength);
 	}
 
-	bool prepareForSave() {
+	bool validate()
+	{
+		return checksum == calculateChecksum() && version == currentVersion;
+	}
+
+	bool prepareForSave()
+	{
 		uint32_t calculatedChecksum = calculateChecksum();
 		bool changed = checksum != calculatedChecksum;
+		version = currentVersion;
 		checksum = calculatedChecksum;
 		return changed;
 	}
 
 	////////////////////////////////////////
-	// 0x010 - 0x040: Calibration
+	// 0x010 - 0x060: Calibration values
 
-	struct Calibration
-	{
-		uint16_t throttleMin        = 685;
-		uint16_t throttleCenter     = 1145;
-		uint16_t throttleMax        = 1647;
-		uint16_t rudderMin          = 663;
-		uint16_t rudderCenter       = 1047;
-		uint16_t rudderMax          = 1427;
-		uint16_t elevatorMin        = 633;
-		uint16_t elevatorCenter     = 1063;
-		uint16_t elevatorMax        = 1494;
-		uint16_t aileronMin         = 662;
-		uint16_t aileronCenter      = 1101;
-		uint16_t aileronMax         = 1548;
-		uint16_t channel5Min        = 2779;
-		uint16_t channel5Center     = 3207;
-		uint16_t channel5Max        = 3793;
-		uint8_t _pad[18];
+	AnalogChannelsCalibration calibration = {
+		/* Throttle */ { .rawMin =  685, .rawCenter = 1145, .rawMax = 1647, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
+		/* Rudder   */ { .rawMin =  663, .rawCenter = 1047, .rawMax = 1427, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
+		/* Elevator */ { .rawMin =  633, .rawCenter = 1063, .rawMax = 1494, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
+		/* Aileron  */ { .rawMin =  662, .rawCenter = 1101, .rawMax = 1548, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
+		/* Channel5 */ { .rawMin = 2779, .rawCenter = 3207, .rawMax = 3793, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
+		/* Unused   */ { .rawMin = 1000, .rawCenter = 2000, .rawMax = 3000, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
 	};
-	Calibration calibration;
+	uint8_t _padAfterCalibration[8];
 
 	////////////////////////////////////////
 
@@ -100,7 +100,7 @@ struct Settings
 	}
 };
 static_assert(offsetof(Settings, calibration) == 0x10);
-static_assert(sizeof(Settings::calibration) == 0x30);
+static_assert(sizeof(Settings::calibration) <= 0x50);
 
 Settings* settings;
 
@@ -173,7 +173,7 @@ void setup()
 	// Initialize the EEPROM
 	EEPROM.begin(sizeof(Settings));
 	settings = reinterpret_cast<Settings*>(EEPROM.getDataPtr());
-	if (settings->calculateChecksum() != settings->checksum) {
+	if (!settings->validate()) {
 		settings->resetToDefault();
 		settings->prepareForSave();
 		EEPROM.commit();
@@ -310,11 +310,11 @@ void loop()
 				" aux1=%u\n"
 				" aux2=%u\n"
 				" aux3=%u\n",
-				settings->calibration.throttleCenter - txSignal.controlPacket.throttle,
-				settings->calibration.rudderCenter   - txSignal.controlPacket.rudder,
-				settings->calibration.elevatorCenter - txSignal.controlPacket.elevator,
-				settings->calibration.aileronCenter  - txSignal.controlPacket.aileron,
-				settings->calibration.channel5Center - txSignal.controlPacket.channel5,
+				settings->calibration[0].rawCenter - txSignal.controlPacket.throttle,
+				settings->calibration[1].rawCenter - txSignal.controlPacket.rudder,
+				settings->calibration[2].rawCenter - txSignal.controlPacket.elevator,
+				settings->calibration[3].rawCenter - txSignal.controlPacket.aileron,
+				settings->calibration[4].rawCenter - txSignal.controlPacket.channel5,
 				txSignal.controlPacket.aux1,
 				txSignal.controlPacket.aux2,
 				txSignal.controlPacket.aux3

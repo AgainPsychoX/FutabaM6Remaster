@@ -1,6 +1,7 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <Servo.h>
 #include "common/packets.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -12,6 +13,15 @@ const uint8_t transmitterOutputAddress[6] = "ctrl!";
 const uint8_t transmitterInputAddress[6]  = "info?";
 
 #define RECEIVER_BATTERY_PIN A7
+
+#define SERVO_CH1_PIN 2
+#define SERVO_CH2_PIN 3
+#define SERVO_CH3_PIN 4
+#define SERVO_CH4_PIN 5
+#define SERVO_CH5_PIN 6
+#define SERVO_CH6_PIN 9
+
+Servo ch1, ch2, ch3, ch4, ch5, ch6;
 
 ////////////////////////////////////////////////////////////////////////////////
 // State
@@ -97,6 +107,14 @@ void setup()
 
 	// Set pin modes
 	pinMode(RECEIVER_BATTERY_PIN, INPUT);
+
+	// Initialize servos
+	ch1.attach(SERVO_CH1_PIN);
+	ch2.attach(SERVO_CH2_PIN);
+	ch3.attach(SERVO_CH3_PIN);
+	ch4.attach(SERVO_CH4_PIN);
+	ch5.attach(SERVO_CH5_PIN);
+	ch6.attach(SERVO_CH6_PIN);
 
 	// Initialize radio and start listening to allow read
 	radio.begin();  
@@ -184,6 +202,14 @@ void loop()
 				txSignal.controlPacket.aux3,
 				analogRead(RECEIVER_BATTERY_PIN)
 			);
+
+			// Update servos
+			ch1.writeMicroseconds(constrain(txSignal.controlPacket.throttle, 700, 2300));
+			ch2.writeMicroseconds(constrain(txSignal.controlPacket.rudder,   700, 2300));
+			ch3.writeMicroseconds(constrain(txSignal.controlPacket.elevator, 700, 2300));
+			ch4.writeMicroseconds(constrain(txSignal.controlPacket.aileron,  700, 2300));
+			ch5.writeMicroseconds(constrain(txSignal.controlPacket.channel5, 700, 2300));
+			ch6.writeMicroseconds(txSignal.controlPacket.aux1 ? 1000 : 2000);
 		}
 	}
 }

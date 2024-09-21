@@ -1,5 +1,32 @@
 #include <stdint.h>
 
+////////////////////////////////////////////////////////////////////////////////
+// Other
+
+enum class AnalogChannel : uint8_t
+{
+	Throttle = 0,
+	Rudder,
+	Elevator,
+	Aileron,
+	Channel5,
+};
+
+struct AnalogChannelCalibrationData
+{
+	uint16_t rawMin;
+	uint16_t rawCenter;
+	uint16_t rawMax;
+	uint16_t usMin;
+	uint16_t usCenter;
+	uint16_t usMax;
+};
+
+typedef AnalogChannelCalibrationData AnalogChannelsCalibration[6];
+
+////////////////////////////////////////////////////////////////////////////////
+// Common
+
 #pragma pack(push)
 #pragma pack(1)
 

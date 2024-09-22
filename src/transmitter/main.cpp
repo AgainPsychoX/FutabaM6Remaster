@@ -1,6 +1,8 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
+#include <Fonts/FreeSans12pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
 #include <nRF24L01.h>
 #include <RF24.h>
 #include <EEPROM.h>
@@ -136,6 +138,7 @@ unsigned long lastTxSignalTime = 0;
 unsigned long lastRxSignalTime = 0;
 constexpr unsigned int rxSignalFetchInterval = 500; // ms
 constexpr unsigned int rxSignalListenDuration = 20; // ms
+constexpr unsigned int rxSignalLostDuration = 1200; // ms
 unsigned long lastRxSignalLastLatency = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -280,24 +283,39 @@ void loop()
 	static unsigned long lastDraw = 0;
 	if (now - lastDraw < 100)
 		return;
-	tft.fillScreen(ST77XX_BLACK);
 	tft.setTextColor(ST77XX_WHITE);
+	tft.setFont(); // to default
 	tft.setCursor(0, 0);
 	// TODO: prevent blinking of the screen when drawing stuff
 	switch (page) {
 		case Page::Info: {
-			tft.printf(
-				"Bateria nadajnika: %.2fV\n"
-				"Bateria odbiornika: %.2fV\n"
-				"Jakosc sygnalu: %hhu\n",
-				txBatteryFactor * txBatteryRaw,
-				rxSignal.statusPacket.battery, // Note: assuming it's always status packet
-				rxSignal.statusPacket.signalRating
-			);
-			// TODO: make it actually look nice
+			tft.setFont(&FreeSans9pt7b);
+			tft.setCursor(0, 20);
+			tft.printf("Nadajnik:");
+			tft.setCursor(0, 40);
+			tft.printf("Odbiornik:");
+			tft.setCursor(0, 60);
+			tft.printf("Sygnal:");
+
+			tft.fillRect(96, 0, 160 - 96 - 1, 60, ST77XX_BLACK);
+			tft.setFont(&FreeSans12pt7b);
+			tft.setCursor(96, 20);
+			tft.printf("%.2fV", txBatteryFactor * txBatteryRaw); // TODO: show only 1 digit after dot, if >10V
+			tft.setCursor(96, 40);
+			tft.printf("%.2fV", rxSignal.statusPacket.battery);
+			tft.setCursor(96, 60);
+			tft.printf("%hhu", rxSignal.statusPacket.signalRating);
+
+			// TODO: show signal lost when no packet comes in for a while,
+			//  maybe even include packets latency/missing in the signal rating.
+			// tft.setFont(); // to default
+			// tft.fillRect(0, 60, 160, 20, ST77XX_BLACK);
+			// tft.setCursor(0, 80 - 12);
+			// tft.printf("L=%lu", lastRxSignalLastLatency);
 			break;
 		}
 		case Page::Raw: {
+			tft.fillScreen(ST77XX_BLACK);
 			tft.printf(
 				"Surowe wartosci:\n"
 				" throttle=%hu\n"
@@ -320,6 +338,7 @@ void loop()
 			break;
 		}
 		case Page::Centered: {
+			tft.fillScreen(ST77XX_BLACK);
 			tft.printf(
 				"Wartosci od srodka:\n"
 				" throttle=%hd\n"
@@ -342,11 +361,13 @@ void loop()
 			break;
 		}
 		case Page::Calibrate: {
+			tft.fillScreen(ST77XX_BLACK);
 			tft.printf("Calibrate?");
 			// TODO: ...
 			break;
 		}
 		case Page::Reverse: {
+			tft.fillScreen(ST77XX_BLACK);
 			tft.printf("Reverse?");
 			// TODO: ...
 			break;

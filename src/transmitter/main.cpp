@@ -218,13 +218,20 @@ void loop()
 {
 	unsigned long now = millis();
 
+	// Read raw analog values
+	uint16_t rawThrottle = analogRead(THROTTLE_PIN);
+	uint16_t rawRudder   = analogRead(RUDDER_PIN);
+	uint16_t rawElevator = analogRead(ELEVATOR_PIN);
+	uint16_t rawAileron  = analogRead(AILERON_PIN);
+	uint16_t rawChannel5 = analogRead(CHANNEL_5_PIN);
+
 	// Send transmitter signal
 	txSignal.packetType = PacketType::Control;
-	txSignal.controlPacket.throttle = mapAnalogValue(analogRead(THROTTLE_PIN),  settings->calibration[0]);
-	txSignal.controlPacket.rudder   = mapAnalogValue(analogRead(RUDDER_PIN),    settings->calibration[1]);
-	txSignal.controlPacket.elevator = mapAnalogValue(analogRead(ELEVATOR_PIN),  settings->calibration[2]);
-	txSignal.controlPacket.aileron  = mapAnalogValue(analogRead(AILERON_PIN),   settings->calibration[3]);
-	txSignal.controlPacket.channel5 = mapAnalogValue(analogRead(CHANNEL_5_PIN), settings->calibration[4]);
+	txSignal.controlPacket.throttle = mapAnalogValue(rawThrottle, settings->calibration[0]);
+	txSignal.controlPacket.rudder   = mapAnalogValue(rawRudder,   settings->calibration[1]);
+	txSignal.controlPacket.elevator = mapAnalogValue(rawElevator, settings->calibration[2]);
+	txSignal.controlPacket.aileron  = mapAnalogValue(rawAileron,  settings->calibration[3]);
+	txSignal.controlPacket.channel5 = mapAnalogValue(rawChannel5, settings->calibration[4]);
 	txSignal.controlPacket.aux1     = digitalRead(AUX_1_PIN);
 	txSignal.controlPacket.aux2     = digitalRead(AUX_2_PIN);
 	txSignal.controlPacket.aux3     = digitalRead(AUX_3_PIN);
@@ -326,11 +333,11 @@ void loop()
 				" aux1=%u\n"
 				" aux2=%u\n"
 				" aux3=%u\n",
-				txSignal.controlPacket.throttle,
-				txSignal.controlPacket.rudder,
-				txSignal.controlPacket.elevator,
-				txSignal.controlPacket.aileron,
-				txSignal.controlPacket.channel5,
+				rawThrottle,
+				rawRudder,
+				rawElevator,
+				rawAileron,
+				rawChannel5,
 				txSignal.controlPacket.aux1,
 				txSignal.controlPacket.aux2,
 				txSignal.controlPacket.aux3
@@ -349,11 +356,11 @@ void loop()
 				" aux1=%u\n"
 				" aux2=%u\n"
 				" aux3=%u\n",
-				settings->calibration[0].rawCenter - txSignal.controlPacket.throttle,
-				settings->calibration[1].rawCenter - txSignal.controlPacket.rudder,
-				settings->calibration[2].rawCenter - txSignal.controlPacket.elevator,
-				settings->calibration[3].rawCenter - txSignal.controlPacket.aileron,
-				settings->calibration[4].rawCenter - txSignal.controlPacket.channel5,
+				settings->calibration[0].usCenter - txSignal.controlPacket.throttle,
+				settings->calibration[1].usCenter - txSignal.controlPacket.rudder,
+				settings->calibration[2].usCenter - txSignal.controlPacket.elevator,
+				settings->calibration[3].usCenter - txSignal.controlPacket.aileron,
+				settings->calibration[4].usCenter - txSignal.controlPacket.channel5,
 				txSignal.controlPacket.aux1,
 				txSignal.controlPacket.aux2,
 				txSignal.controlPacket.aux3

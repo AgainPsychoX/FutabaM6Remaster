@@ -198,17 +198,30 @@ void setup()
 ////////////////////////////////////////////////////////////////////////////////
 // Loop
 
+uint16_t mapAnalogValue(uint16_t value, AnalogChannelCalibrationData& calibration)
+{
+	// The safety constrain is applied in the receiver side, keeping servos in range 700-2300 us.
+#if 1 // Two curves based on min & center and center & max values
+	if (value < calibration.rawCenter)
+		return map(value, calibration.rawMin, calibration.rawCenter, calibration.usMin, calibration.usCenter);
+	else
+		return map(value, calibration.rawCenter, calibration.rawMax, calibration.usCenter, calibration.usMax);
+#else // Single linear curve based on min & max values
+	return map(value, calibration.rawMin, calibration.rawMax, calibration.usMin, calibration.usMax);
+#endif
+}
+
 void loop()
 {
 	unsigned long now = millis();
 
 	// Send transmitter signal
 	txSignal.packetType = PacketType::Control;
-	txSignal.controlPacket.throttle = analogRead(THROTTLE_PIN);
-	txSignal.controlPacket.rudder   = analogRead(RUDDER_PIN);
-	txSignal.controlPacket.elevator = analogRead(ELEVATOR_PIN);
-	txSignal.controlPacket.aileron  = analogRead(AILERON_PIN);
-	txSignal.controlPacket.channel5 = analogRead(CHANNEL_5_PIN);
+	txSignal.controlPacket.throttle = mapAnalogValue(analogRead(THROTTLE_PIN),  settings->calibration[0]);
+	txSignal.controlPacket.rudder   = mapAnalogValue(analogRead(RUDDER_PIN),    settings->calibration[1]);
+	txSignal.controlPacket.elevator = mapAnalogValue(analogRead(ELEVATOR_PIN),  settings->calibration[2]);
+	txSignal.controlPacket.aileron  = mapAnalogValue(analogRead(AILERON_PIN),   settings->calibration[3]);
+	txSignal.controlPacket.channel5 = mapAnalogValue(analogRead(CHANNEL_5_PIN), settings->calibration[4]);
 	txSignal.controlPacket.aux1     = digitalRead(AUX_1_PIN);
 	txSignal.controlPacket.aux2     = digitalRead(AUX_2_PIN);
 	txSignal.controlPacket.aux3     = digitalRead(AUX_3_PIN);

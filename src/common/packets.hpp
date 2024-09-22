@@ -30,24 +30,41 @@ typedef AnalogChannelCalibrationData AnalogChannelsCalibration[6];
 #pragma pack(push)
 #pragma pack(1)
 
+constexpr uint8_t staticPayloadSize = 16;
+
 enum class PacketType : uint8_t
 {
 	Unknown = 0,
 	Control = 2,
 	Status  = 3,
+	SetServosCalibration = 4,
+	GetServosCalibration = 5,
 };
+
+struct CalibrationPacket
+{
+	AnalogChannel channel;
+	AnalogChannelCalibrationData data;
+	uint8_t _pad[2];
+};
+static_assert(sizeof(CalibrationPacket) <= staticPayloadSize - 1);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Transmitter
 
+enum class TransmitterRequest : uint8_t
+{
+	None = 0,
+	Status = 3,
+	AnalogCalibration = 5,
+};
+
 struct ControlPacket
 {
-	union {
-		struct {
-			bool requestingStatus : 1;
-		};
-		uint8_t flags;
-	};
+	// Extra request from the receiver
+	TransmitterRequest request;
+
+	// Main data
 	uint16_t throttle;
 	uint16_t rudder;
 	uint16_t elevator;
@@ -56,7 +73,11 @@ struct ControlPacket
 	uint8_t aux1;
 	uint8_t aux2;
 	uint8_t aux3;
-	uint8_t pad;
+
+	// Extra data
+	union {
+		AnalogChannel channel; // selection for analog calibration request
+	};
 };
 
 struct TransmitterSignal
@@ -65,8 +86,10 @@ struct TransmitterSignal
 
 	union {
 		ControlPacket controlPacket;
+		CalibrationPacket calibrationPacket;
 	};
 };
+static_assert(sizeof(TransmitterSignal) <= staticPayloadSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Receiver
@@ -89,13 +112,11 @@ struct ReceiverSignal
 
 	union {
 		StatusPacket statusPacket;
+		CalibrationPacket calibrationPacket;
 	};
 };
+static_assert(sizeof(ReceiverSignal) <= staticPayloadSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
 #pragma pack(pop)
-
-static_assert(sizeof(TransmitterSignal) <= 16);
-static_assert(sizeof(ReceiverSignal) <= 16);
-constexpr uint8_t staticPayloadSize = 16;

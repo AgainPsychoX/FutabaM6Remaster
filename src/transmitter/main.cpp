@@ -34,6 +34,10 @@ RF24 radio(RF24_CE, RF24_CSN);
 const uint8_t transmitterOutputAddress[6] = "ctrl!";
 const uint8_t transmitterInputAddress[6]  = "info?";
 
+#define F1_PIN          21
+#define BUZZER_PIN      47
+#define TRANSMITTER_BATTERY_PIN 8
+
 #define THROTTLE_PIN    4
 #define RUDDER_PIN      5
 #define ELEVATOR_PIN    1
@@ -42,9 +46,6 @@ const uint8_t transmitterInputAddress[6]  = "info?";
 #define AUX_1_PIN       43
 #define AUX_2_PIN       44
 #define AUX_3_PIN       42
-#define F1_PIN          21
-#define BUZZER_PIN      47
-#define TRANSMITTER_BATTERY_PIN 8
 
 ////////////////////////////////////////////////////////////////////////////////
 // Saved state (in EEPROM)
@@ -211,11 +212,16 @@ void loop()
 	txSignal.controlPacket.aux1     = digitalRead(AUX_1_PIN);
 	txSignal.controlPacket.aux2     = digitalRead(AUX_2_PIN);
 	txSignal.controlPacket.aux3     = digitalRead(AUX_3_PIN);
-	txSignal.controlPacket.requestingStatus = now - lastRxSignalTime > rxSignalFetchInterval;
+	if (now - lastRxSignalTime > rxSignalFetchInterval) {
+		txSignal.controlPacket.request = TransmitterRequest::Status;
+	}
+	else {
+		txSignal.controlPacket.request = TransmitterRequest::None;
+	}
 	radio.write(&txSignal, sizeof(txSignal));
 	lastTxSignalTime = now;
 
-	if (txSignal.controlPacket.requestingStatus) {
+	if (txSignal.controlPacket.request != TransmitterRequest::None) {
 		radio.startListening();
 		unsigned long listenStartTime = millis();
 		do {
@@ -231,7 +237,8 @@ void loop()
 		radio.stopListening();
 	}
 
-	digitalWrite(BUZZER_PIN, txSignal.controlPacket.throttle > 1600 ? HIGH : LOW);
+	// Buzzer testing, since it sounds weird...
+	digitalWrite(BUZZER_PIN, analogRead(THROTTLE_PIN) > 1600 ? HIGH : LOW);
 
 	// Transmitter battery uses 15V to 3.235V divider (12kOhm & 3.3kOhm),
 	// ESP32S3 has 12-bit ADC.

@@ -65,9 +65,14 @@ struct SignalStabilityCounter
 					33 * (goodCount) / (goodCount + weakCount)
 				);
 
-#ifdef DEBUG
-	// #ifdef ANTENNA_TESTING
-				printf("signalStability::update() |||||||||||||||||| count: %3d   count/average ratio: %3d%%   good/weak ratio: %3d%%   average delta time: %3lu  --> RATING: %3u   fail? %u\n",
+#if DEBUG_SIGNAL_STABILITY
+				printf(
+					"signalStability::update()\t"
+					"count: %3d\t"
+					"count/average ratio: %3d%%\t"
+					"good/weak ratio: %3d%%\t"
+					"average delta time: %3lu\t"
+					"--> RATING: %3u\tfail? %u\n",
 					(goodCount + weakCount),
 					100 * (goodCount + weakCount) / averageCountForInterval,
 					100 * (goodCount) / (goodCount + weakCount),
@@ -75,7 +80,6 @@ struct SignalStabilityCounter
 					lastRating,
 					radio.failureDetected
 				);
-	// #endif
 #endif
 
 				timeSinceLastTxSignalSums = 0;
@@ -148,8 +152,8 @@ void loop()
 		signalStability.timeSinceLastTxSignalSums += timeSinceLastTxSignal;
 
 		if (txSignal.packetType == PacketType::Control) {
-			if (txSignal.controlPacket.requestingStatus) {
-				txSignal.controlPacket.requestingStatus = false; // to avoid sending
+			if (txSignal.controlPacket.request == TransmitterRequest::Status) {
+				txSignal.controlPacket.request = TransmitterRequest::None; // to avoid retransmission
 				radio.stopListening();
 				rxSignal.packetType = PacketType::Status;
 				rxSignal.statusPacket.battery = (5.f * analogRead(RECEIVER_BATTERY_PIN) / 1023) * 3;

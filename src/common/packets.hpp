@@ -3,13 +3,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 // Other
 
-enum class AnalogChannel : uint8_t
+enum class AnalogChannel : int8_t
 {
 	Throttle = 0,
 	Rudder,
 	Elevator,
 	Aileron,
 	Channel5,
+	Unknown = -1,
 };
 
 struct AnalogChannelCalibrationData

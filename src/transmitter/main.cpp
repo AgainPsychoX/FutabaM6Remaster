@@ -1,3 +1,4 @@
+#include <tuple>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
@@ -48,6 +49,11 @@ const uint8_t transmitterInputAddress[6]  = "info?";
 #define AUX_1_PIN       43
 #define AUX_2_PIN       44
 #define AUX_3_PIN       42
+
+const char* channelNames[] = {
+	"Throttle", "Rudder", "Elevator", "Aileron", "Channel 5", 
+	"Aux 1", "Aux 2", "Aux 3",
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Saved state (in EEPROM)
@@ -115,7 +121,8 @@ enum class Page : unsigned int
 	Info,       // Transmitter & receiver battery and signal strength.
 	Raw,        // Raw analog values.
 	Centered,   // Analog values with bias/offset, zero in configured position.
-	Calibrate,  // Setup min/max values on each control, to be used for PPM gen.
+	Calibrate,  // Setup analog min/center/max reference values on each control,
+                // microseconds min/center/max for the servos for the receiver.
 	Reverse,    // Allow reversing of the channels.
 	Count,      // Not a page, count of all the pages.
 };
@@ -130,6 +137,8 @@ void goNextPage()
 }
 
 unsigned long f1ButtonPressed = 0; // 0 means not pressed
+uint16_t rawAnalogValues[6];
+uint16_t mappedValues[6];
 
 TransmitterSignal txSignal;
 ReceiverSignal rxSignal;
@@ -140,6 +149,9 @@ constexpr unsigned int rxSignalFetchInterval = 500; // ms
 constexpr unsigned int rxSignalListenDuration = 20; // ms
 constexpr unsigned int rxSignalLostDuration = 1200; // ms
 unsigned long lastRxSignalLastLatency = 0;
+
+AnalogChannel selectedChannel;
+int8_t parameterSelected;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Setup
@@ -214,24 +226,46 @@ uint16_t mapAnalogValue(uint16_t value, AnalogChannelCalibrationData& calibratio
 #endif
 }
 
+AnalogChannel trySelectChannel()
+{
+	for (int8_t i = 0; i < 5; i++) {
+		int delta = settings->calibration[i].rawCenter - rawAnalogValues[i];
+		if (delta < 0) delta = -delta;
+		if (delta > 100) {
+			return static_cast<AnalogChannel>(i);
+		}
+	}
+	return AnalogChannel::Unknown;
+}
+
 void loop()
 {
 	unsigned long now = millis();
 
 	// Read raw analog values
-	uint16_t rawThrottle = analogRead(THROTTLE_PIN);
-	uint16_t rawRudder   = analogRead(RUDDER_PIN);
-	uint16_t rawElevator = analogRead(ELEVATOR_PIN);
-	uint16_t rawAileron  = analogRead(AILERON_PIN);
-	uint16_t rawChannel5 = analogRead(CHANNEL_5_PIN);
+	rawAnalogValues[0] = analogRead(THROTTLE_PIN);
+	rawAnalogValues[1] = analogRead(RUDDER_PIN);
+	rawAnalogValues[2] = analogRead(ELEVATOR_PIN);
+	rawAnalogValues[3] = analogRead(AILERON_PIN);
+	rawAnalogValues[4] = analogRead(CHANNEL_5_PIN);
+	rawAnalogValues[5] = 0;
 
+	// Map the values to microseconds
+	mappedValues[0] = mapAnalogValue(rawAnalogValues[0], settings->calibration[0]);
+	mappedValues[1] = mapAnalogValue(rawAnalogValues[1], settings->calibration[1]);
+	mappedValues[2] = mapAnalogValue(rawAnalogValues[2], settings->calibration[2]);
+	mappedValues[3] = mapAnalogValue(rawAnalogValues[3], settings->calibration[3]);
+	mappedValues[4] = mapAnalogValue(rawAnalogValues[4], settings->calibration[4]);
+	mappedValues[5] = mapAnalogValue(rawAnalogValues[5], settings->calibration[5]);
+	// TODO: clean it up somehow, feels very messy...
+	
 	// Send transmitter signal
 	txSignal.packetType = PacketType::Control;
-	txSignal.controlPacket.throttle = mapAnalogValue(rawThrottle, settings->calibration[0]);
-	txSignal.controlPacket.rudder   = mapAnalogValue(rawRudder,   settings->calibration[1]);
-	txSignal.controlPacket.elevator = mapAnalogValue(rawElevator, settings->calibration[2]);
-	txSignal.controlPacket.aileron  = mapAnalogValue(rawAileron,  settings->calibration[3]);
-	txSignal.controlPacket.channel5 = mapAnalogValue(rawChannel5, settings->calibration[4]);
+	txSignal.controlPacket.throttle = mappedValues[0];
+	txSignal.controlPacket.rudder   = mappedValues[1];
+	txSignal.controlPacket.elevator = mappedValues[2];
+	txSignal.controlPacket.aileron  = mappedValues[3];
+	txSignal.controlPacket.channel5 = mappedValues[4];
 	txSignal.controlPacket.aux1     = digitalRead(AUX_1_PIN);
 	txSignal.controlPacket.aux2     = digitalRead(AUX_2_PIN);
 	txSignal.controlPacket.aux3     = digitalRead(AUX_3_PIN);
@@ -279,6 +313,17 @@ void loop()
 			}
 			else /* short press finished */ {
 				goNextPage();
+				tft.fillScreen(ST77XX_BLACK);
+				switch (page) {
+					case Page::Calibrate:
+					case Page::Reverse: {
+						selectedChannel = AnalogChannel::Unknown;
+						parameterSelected = 0;
+						break;
+					}
+					default: 
+						break;
+				}
 			}
 			f1ButtonPressed = 0;
 		}
@@ -333,11 +378,11 @@ void loop()
 				" aux1=%u\n"
 				" aux2=%u\n"
 				" aux3=%u\n",
-				rawThrottle,
-				rawRudder,
-				rawElevator,
-				rawAileron,
-				rawChannel5,
+				rawAnalogValues[0],
+				rawAnalogValues[1],
+				rawAnalogValues[2],
+				rawAnalogValues[3],
+				rawAnalogValues[4],
 				txSignal.controlPacket.aux1,
 				txSignal.controlPacket.aux2,
 				txSignal.controlPacket.aux3
@@ -346,37 +391,110 @@ void loop()
 		}
 		case Page::Centered: {
 			tft.fillScreen(ST77XX_BLACK);
+			// tft.setFont(&FreeSans9pt7b); // doesn't fit...
 			tft.printf(
 				"Wartosci od srodka:\n"
-				" throttle=%hd\n"
-				" rudder=%hd\n"
-				" elevator=%hd\n"
-				" aileron=%hd\n"
-				" channel5=%hd\n"
-				" aux1=%u\n"
-				" aux2=%u\n"
-				" aux3=%u\n",
+				" throttle: %hd\n"
+				" rudder: %hd\n"
+				" elevator: %hd\n"
+				" aileron: %hd\n"
+				" channel5: %hd",
 				settings->calibration[0].usCenter - txSignal.controlPacket.throttle,
 				settings->calibration[1].usCenter - txSignal.controlPacket.rudder,
 				settings->calibration[2].usCenter - txSignal.controlPacket.elevator,
 				settings->calibration[3].usCenter - txSignal.controlPacket.aileron,
-				settings->calibration[4].usCenter - txSignal.controlPacket.channel5,
-				txSignal.controlPacket.aux1,
-				txSignal.controlPacket.aux2,
-				txSignal.controlPacket.aux3
+				settings->calibration[4].usCenter - txSignal.controlPacket.channel5
 			);
+			if (wasLongPress) {
+				settings->calibration[0].usCenter = txSignal.controlPacket.throttle;
+				settings->calibration[1].usCenter = txSignal.controlPacket.rudder;
+				settings->calibration[2].usCenter = txSignal.controlPacket.elevator;
+				settings->calibration[3].usCenter = txSignal.controlPacket.aileron;
+				settings->calibration[4].usCenter = txSignal.controlPacket.channel5;
+				EEPROM.commit();
+			}
 			break;
 		}
-		case Page::Calibrate: {
-			tft.fillScreen(ST77XX_BLACK);
-			tft.printf("Calibrate?");
-			// TODO: ...
-			break;
-		}
+		case Page::Calibrate:
 		case Page::Reverse: {
-			tft.fillScreen(ST77XX_BLACK);
-			tft.printf("Reverse?");
-			// TODO: ...
+			tft.setCursor(0, 0);
+			tft.printf(page == Page::Calibrate ? "Kalibracja" : "Odwracanie");
+			if (selectedChannel == AnalogChannel::Unknown) {
+				tft.setCursor(20, 20);
+				tft.printf("Wybierz kanal");
+				selectedChannel = trySelectChannel();
+				if (selectedChannel != AnalogChannel::Unknown)
+					tft.fillScreen(ST77XX_BLACK);
+			}
+			else /* any channel selected */ {
+				auto& c = settings->calibration[static_cast<int8_t>(selectedChannel)];
+				tft.setCursor(20, 12);
+				tft.printf("Kanal: %s", channelNames[static_cast<int8_t>(selectedChannel)]);
+				if (parameterSelected == -1) {
+					tft.setCursor(20, 24);
+					tft.print("Zapisano!");
+				}
+				else /* any parameter selected */ {
+					// Print current value (raw & mapped)
+					tft.fillRect(2 + 24, 24, 32, 12, ST77XX_BLACK);
+					tft.setCursor(2, 24);
+					tft.printf("raw=%u\n", rawAnalogValues[static_cast<int8_t>(selectedChannel)]);
+					tft.fillRect(82 + 18, 24, 32, 12, ST77XX_BLACK);
+					tft.setCursor(82, 24);
+					tft.printf("us=%u\n", mappedValues[static_cast<int8_t>(selectedChannel)]);
+
+					constexpr auto valuesStartY = 40;
+
+					// When in calibration mode, print ">" to mark the selected parameter
+					if (page == Page::Calibrate) {
+						constexpr uint16_t markColor = 0x7BEF; // gray
+						if (parameterSelected < 3)
+							tft.drawRect(0, valuesStartY - 2 + parameterSelected * 12, 76, 12, markColor);
+						else
+							tft.drawRect(80, valuesStartY - 2 + (parameterSelected - 3) * 12, 76, 12, markColor);
+					}
+
+					// Print the calibration values
+					tft.setCursor(2, valuesStartY + 0 * 12);
+					tft.printf("rawMin=%u", c.rawMin);
+					tft.setCursor(2, valuesStartY + 1 * 12);
+					tft.printf("rawCntr=%u", c.rawCenter);
+					tft.setCursor(2, valuesStartY + 2 * 12);
+					tft.printf("rawMax=%u", c.rawMax);
+					tft.setCursor(82, valuesStartY + 0 * 12);
+					tft.printf("usMin=%u", c.usMin);
+					tft.setCursor(82, valuesStartY + 1 * 12);
+					tft.printf("usCntr=%u", c.usCenter);
+					tft.setCursor(82, valuesStartY + 2 * 12);
+					tft.printf("usMax=%u", c.usMax);
+				}
+				// On long press, save the current value as specific 
+				if (wasLongPress) {
+					if (page == Page::Calibrate) {
+						switch (parameterSelected++) {
+							case 0: c.rawMin    = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
+							case 1: c.rawCenter = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
+							case 2: c.rawMax    = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
+							case 3: c.usMin     = mappedValues[static_cast<int8_t>(selectedChannel)]; break;
+							case 4: c.usCenter  = mappedValues[static_cast<int8_t>(selectedChannel)]; break;
+							case 5: // On last one, commit to the EEPROM and show "Saved" message
+								c.usMax = mappedValues[static_cast<int8_t>(selectedChannel)];
+								parameterSelected = -1; // to show "Saved" message
+								EEPROM.commit();
+								break;
+							default:
+								break;
+						}
+					}
+					else /* (page == Page::Reverse) */ {
+						auto tmp = c.usMin;
+						c.usMin = c.usMax;
+						c.usMax = tmp;
+						EEPROM.commit();
+					}
+					tft.fillScreen(ST77XX_BLACK);
+				}
+			}
 			break;
 		}
 		default:

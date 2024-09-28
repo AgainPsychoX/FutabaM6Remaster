@@ -445,6 +445,7 @@ void loop()
 				settings->calibration[2].usCenter = txSignal.controlPacket.elevator;
 				settings->calibration[3].usCenter = txSignal.controlPacket.aileron;
 				settings->calibration[4].usCenter = txSignal.controlPacket.channel5;
+				settings->prepareForSave();
 				EEPROM.commit();
 			}
 			break;
@@ -525,6 +526,7 @@ void loop()
 								c.usMax = mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias;
 								parameterSelected = -1; // to show "Saved" message
 								extraBias = 0;
+								settings->prepareForSave();
 								EEPROM.commit();
 								break;
 							default:
@@ -535,6 +537,7 @@ void loop()
 						auto tmp = c.usMin;
 						c.usMin = c.usMax;
 						c.usMax = tmp;
+						settings->prepareForSave();
 						EEPROM.commit();
 					}
 					tft.fillScreen(ST77XX_BLACK);

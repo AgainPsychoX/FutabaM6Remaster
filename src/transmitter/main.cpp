@@ -152,6 +152,7 @@ unsigned long lastRxSignalLastLatency = 0;
 
 AnalogChannel selectedChannel;
 int8_t parameterSelected;
+int16_t extraBias;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Setup
@@ -238,6 +239,38 @@ AnalogChannel trySelectChannel()
 	return AnalogChannel::Unknown;
 }
 
+/// Returns pair of values representing deltas (from center) from the other 
+/// than currently selected joystick: X/Y, with values always growing 
+/// from left to right and top to bottom.
+std::tuple<int16_t, int16_t> getOtherThanSelectedJoystickDeltas()
+{
+	switch (selectedChannel) {
+		case AnalogChannel::Channel5:
+		case AnalogChannel::Throttle:
+		case AnalogChannel::Rudder: {
+			// Using right joystick
+			auto xAxisIdx = static_cast<int8_t>(AnalogChannel::Aileron);
+			auto yAxisIdx = static_cast<int8_t>(AnalogChannel::Elevator);
+			return {
+				rawAnalogValues[xAxisIdx] - settings->calibration[xAxisIdx].rawCenter,
+				rawAnalogValues[yAxisIdx] - settings->calibration[yAxisIdx].rawCenter,
+			};
+		}
+		case AnalogChannel::Elevator:
+		case AnalogChannel::Aileron: {
+			// Using left joystick (throttle is inverted for some reason)
+			auto xAxisIdx = static_cast<int8_t>(AnalogChannel::Rudder);
+			auto yAxisIdx = static_cast<int8_t>(AnalogChannel::Throttle);
+			return {
+				rawAnalogValues[xAxisIdx] - settings->calibration[xAxisIdx].rawCenter,
+				settings->calibration[yAxisIdx].rawCenter - rawAnalogValues[yAxisIdx],
+			};
+		}
+		default:
+			return { 0, 0 };
+	}
+}
+
 void loop()
 {
 	unsigned long now = millis();
@@ -319,6 +352,7 @@ void loop()
 					case Page::Reverse: {
 						selectedChannel = AnalogChannel::Unknown;
 						parameterSelected = 0;
+						extraBias = 0;
 						break;
 					}
 					default: 
@@ -435,15 +469,25 @@ void loop()
 					tft.print("Zapisano!");
 				}
 				else /* any parameter selected */ {
+					const auto [x, y] = getOtherThanSelectedJoystickDeltas();
+					if (x < -100 || 100 < x)
+						extraBias += x / 100;
+
+					// TODO: move parameterSelected with y, but still require long press to save
+					// TODO: preview the calibration values below
+					// TODO: allow extraBias for potentiometers too
+					// TODO: warn if extraBias is invalid
+					// TODO: make the extraBias raise even slower closer to center
+
 					// Print current value (raw & mapped)
 					tft.fillRect(2 + 24, 24, 32, 12, ST77XX_BLACK);
 					tft.setCursor(2, 24);
 					tft.printf("raw=%u\n", rawAnalogValues[static_cast<int8_t>(selectedChannel)]);
 					tft.fillRect(82 + 18, 24, 32, 12, ST77XX_BLACK);
 					tft.setCursor(82, 24);
-					tft.printf("us=%u\n", mappedValues[static_cast<int8_t>(selectedChannel)]);
+					tft.printf("us=%u\n", mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias);
 
-					constexpr auto valuesStartY = 40;
+					constexpr auto valuesStartY = 48;
 
 					// When in calibration mode, print ">" to mark the selected parameter
 					if (page == Page::Calibrate) {
@@ -472,14 +516,15 @@ void loop()
 				if (wasLongPress) {
 					if (page == Page::Calibrate) {
 						switch (parameterSelected++) {
-							case 0: c.rawMin    = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
-							case 1: c.rawCenter = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
-							case 2: c.rawMax    = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
-							case 3: c.usMin     = mappedValues[static_cast<int8_t>(selectedChannel)]; break;
-							case 4: c.usCenter  = mappedValues[static_cast<int8_t>(selectedChannel)]; break;
+							case 0: c.rawMin    = rawAnalogValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
+							case 1: c.rawCenter = rawAnalogValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
+							case 2: c.rawMax    = rawAnalogValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
+							case 3: c.usMin     = mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
+							case 4: c.usCenter  = mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
 							case 5: // On last one, commit to the EEPROM and show "Saved" message
-								c.usMax = mappedValues[static_cast<int8_t>(selectedChannel)];
+								c.usMax = mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias;
 								parameterSelected = -1; // to show "Saved" message
+								extraBias = 0;
 								EEPROM.commit();
 								break;
 							default:

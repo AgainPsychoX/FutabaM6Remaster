@@ -425,20 +425,30 @@ void loop()
 		}
 		case Page::Centered: {
 			tft.fillScreen(ST77XX_BLACK);
-			// tft.setFont(&FreeSans9pt7b); // doesn't fit...
+			tft.print("Wartosci od srodka:");
+
+			tft.setFont(&FreeSans9pt7b);
+			constexpr int div = 6; // losing some accuracy for easier displaying & reading
+			tft.setCursor(0, 12 + 1 * 16);
+			tft.printf("THR: %hd", (settings->calibration[0].usCenter - txSignal.controlPacket.throttle) / div);
+			tft.setCursor(0, 12 + 2 * 16);
+			tft.printf("RUD: %hd", (settings->calibration[1].usCenter - txSignal.controlPacket.rudder)   / div);
+			tft.setCursor(80, 12 + 1 * 16);
+			tft.printf("ELV: %hd", (settings->calibration[2].usCenter - txSignal.controlPacket.elevator) / div);
+			tft.setCursor(80, 12 + 2 * 16);
+			tft.printf("AIL: %hd", (settings->calibration[3].usCenter - txSignal.controlPacket.aileron)  / div);
+			tft.setCursor(0, 12 + 3 * 16);
+			tft.printf("CH5: %hd", (settings->calibration[4].usCenter - txSignal.controlPacket.channel5) / div);
+
+			tft.setFont(); // to default
+			tft.setCursor(0, 80 - 12);
 			tft.printf(
-				"Wartosci od srodka:\n"
-				" throttle: %hd\n"
-				" rudder: %hd\n"
-				" elevator: %hd\n"
-				" aileron: %hd\n"
-				" channel5: %hd",
-				settings->calibration[0].usCenter - txSignal.controlPacket.throttle,
-				settings->calibration[1].usCenter - txSignal.controlPacket.rudder,
-				settings->calibration[2].usCenter - txSignal.controlPacket.elevator,
-				settings->calibration[3].usCenter - txSignal.controlPacket.aileron,
-				settings->calibration[4].usCenter - txSignal.controlPacket.channel5
+				"AUX1: %u  AUX2: %u  AUX3: %u", 
+				txSignal.controlPacket.aux1,
+				txSignal.controlPacket.aux2,
+				txSignal.controlPacket.aux3
 			);
+
 			if (wasLongPress) {
 				settings->calibration[0].usCenter = txSignal.controlPacket.throttle;
 				settings->calibration[1].usCenter = txSignal.controlPacket.rudder;

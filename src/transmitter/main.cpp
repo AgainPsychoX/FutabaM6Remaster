@@ -150,6 +150,7 @@ constexpr unsigned int rxSignalListenDuration = 20; // ms
 constexpr unsigned int rxSignalLostDuration = 1024; // ms
 unsigned long lastRxSignalLastLatency = 0;
 
+unsigned long cooldownTime = 0; // for various things
 AnalogChannel selectedChannel;
 int8_t parameterSelected;
 int16_t extraBias;
@@ -239,6 +240,30 @@ AnalogChannel trySelectChannel()
 	return AnalogChannel::Unknown;
 }
 
+/// Returns pair of values representing deltas (from center) 
+/// for specified joystick: X/Y, with values always growing 
+/// from left to right and top to bottom.
+std::tuple<int16_t, int16_t> getJoystickDeltas(bool right)
+{
+	if (right) {
+		auto xAxisIdx = static_cast<int8_t>(AnalogChannel::Aileron);
+		auto yAxisIdx = static_cast<int8_t>(AnalogChannel::Elevator);
+		return {
+			rawAnalogValues[xAxisIdx] - settings->calibration[xAxisIdx].rawCenter,
+			rawAnalogValues[yAxisIdx] - settings->calibration[yAxisIdx].rawCenter,
+		};
+	}
+	else /* left */ {
+		// Using left joystick (throttle is inverted for some reason)
+		auto xAxisIdx = static_cast<int8_t>(AnalogChannel::Rudder);
+		auto yAxisIdx = static_cast<int8_t>(AnalogChannel::Throttle);
+		return {
+			rawAnalogValues[xAxisIdx] - settings->calibration[xAxisIdx].rawCenter,
+			settings->calibration[yAxisIdx].rawCenter - rawAnalogValues[yAxisIdx],
+		};
+	}
+}
+
 /// Returns pair of values representing deltas (from center) from the other 
 /// than currently selected joystick: X/Y, with values always growing 
 /// from left to right and top to bottom.
@@ -247,25 +272,11 @@ std::tuple<int16_t, int16_t> getOtherThanSelectedJoystickDeltas()
 	switch (selectedChannel) {
 		case AnalogChannel::Channel5:
 		case AnalogChannel::Throttle:
-		case AnalogChannel::Rudder: {
-			// Using right joystick
-			auto xAxisIdx = static_cast<int8_t>(AnalogChannel::Aileron);
-			auto yAxisIdx = static_cast<int8_t>(AnalogChannel::Elevator);
-			return {
-				rawAnalogValues[xAxisIdx] - settings->calibration[xAxisIdx].rawCenter,
-				rawAnalogValues[yAxisIdx] - settings->calibration[yAxisIdx].rawCenter,
-			};
-		}
+		case AnalogChannel::Rudder:
+			return getJoystickDeltas(true);
 		case AnalogChannel::Elevator:
-		case AnalogChannel::Aileron: {
-			// Using left joystick (throttle is inverted for some reason)
-			auto xAxisIdx = static_cast<int8_t>(AnalogChannel::Rudder);
-			auto yAxisIdx = static_cast<int8_t>(AnalogChannel::Throttle);
-			return {
-				rawAnalogValues[xAxisIdx] - settings->calibration[xAxisIdx].rawCenter,
-				settings->calibration[yAxisIdx].rawCenter - rawAnalogValues[yAxisIdx],
-			};
-		}
+		case AnalogChannel::Aileron:
+			return getJoystickDeltas(false);
 		default:
 			return { 0, 0 };
 	}
@@ -349,11 +360,14 @@ void loop()
 				goNextPage();
 				tft.fillScreen(ST77XX_BLACK);
 				switch (page) {
-					case Page::Calibrate:
-					case Page::Reverse: {
+					case Page::Calibrate: {
 						selectedChannel = AnalogChannel::Unknown;
 						parameterSelected = 0;
 						extraBias = 0;
+						break;
+					}
+					case Page::Reverse: {
+						selectedChannel = AnalogChannel::Throttle;
 						break;
 					}
 					default: 
@@ -464,8 +478,7 @@ void loop()
 			}
 			break;
 		}
-		case Page::Calibrate:
-		case Page::Reverse: {
+		case Page::Calibrate: {
 			tft.setCursor(0, 0);
 			tft.printf(page == Page::Calibrate ? "Kalibracja" : "Odwracanie");
 			if (selectedChannel == AnalogChannel::Unknown) {
@@ -493,6 +506,7 @@ void loop()
 					// TODO: allow extraBias for potentiometers too
 					// TODO: warn if extraBias is invalid
 					// TODO: make the extraBias raise even slower closer to center
+					// TODO: remove Page::Reverse related dead code from here
 
 					// Print current value (raw & mapped)
 					tft.fillRect(2 + 24, 24, 32, 12, ST77XX_BLACK);
@@ -555,6 +569,53 @@ void loop()
 						EEPROM.commit();
 					}
 					tft.fillScreen(ST77XX_BLACK);
+				}
+			}
+			break;
+		}
+		case Page::Reverse: {
+			tft.setCursor(0, 0);
+			tft.printf("Odwracanie");
+
+			// Print current channel
+			tft.fillRect(8 + 52, 11, 120, 17, ST77XX_BLACK);
+			tft.setFont(&FreeSans9pt7b);
+			tft.setCursor(8, 24);
+			tft.printf("Kanal: %s", channelNames[static_cast<int8_t>(selectedChannel)]);
+
+			auto& c = settings->calibration[static_cast<int8_t>(selectedChannel)];
+			const bool reversed = c.usMin > c.usMax;
+
+			// Print current reverse state
+			tft.fillRect(8 + 42, 28, 120, 17, ST77XX_BLACK);
+			tft.setCursor(8, 40);
+			tft.printf("Stan: %s", reversed ? "rewers >" : "< normalny");
+
+			if (now - cooldownTime > 512) {
+				const auto [x, y] = getJoystickDeltas(true);
+				if (y < -100) {
+					selectedChannel = static_cast<AnalogChannel>((static_cast<int8_t>(selectedChannel) + 4) % 5);
+					cooldownTime = now;
+				}
+				else if (100 < y) {
+					selectedChannel = static_cast<AnalogChannel>((static_cast<int8_t>(selectedChannel) + 1) % 5);
+					cooldownTime = now;
+				}
+				if (x < -100 && reversed) {
+					auto tmp = c.usMin;
+					c.usMin = c.usMax;
+					c.usMax = tmp;
+					settings->prepareForSave();
+					EEPROM.commit();
+					cooldownTime = now;
+				}
+				else if (100 < x && !reversed) {
+					auto tmp = c.usMin;
+					c.usMin = c.usMax;
+					c.usMax = tmp;
+					settings->prepareForSave();
+					EEPROM.commit();
+					cooldownTime = now;
 				}
 			}
 			break;

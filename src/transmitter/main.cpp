@@ -381,13 +381,17 @@ void loop()
 		f1ButtonPressed = digitalRead(F1_PIN) == LOW ? now : 0;
 	}
 
-	static unsigned long lastDraw = 0;
-	if (now - lastDraw < 100)
-		return;
+	// TODO: prevent blinking of the screen when drawing stuff; this is useless...?
+	// static unsigned long lastDraw = 0;
+	// if (now - lastDraw < 20)
+	// 	return;
+	// lastDraw = now;
+
+	// Default for the pages
 	tft.setTextColor(ST77XX_WHITE);
 	tft.setFont(); // to default
 	tft.setCursor(0, 0);
-	// TODO: prevent blinking of the screen when drawing stuff
+
 	switch (page) {
 		case Page::Info: {
 			tft.setFont(&FreeSans9pt7b);
@@ -442,24 +446,41 @@ void loop()
 			break;
 		}
 		case Page::Centered: {
-			tft.fillScreen(ST77XX_BLACK);
 			tft.print("Wartosci od srodka:");
 
 			tft.setFont(&FreeSans9pt7b);
 			constexpr int div = 6; // losing some accuracy for easier displaying & reading
+
 			tft.setCursor(0, 12 + 1 * 16);
-			tft.printf("THR: %hd", (settings->calibration[0].usCenter - txSignal.controlPacket.throttle) / div);
+			tft.print("THR:");
 			tft.setCursor(0, 12 + 2 * 16);
-			tft.printf("RUD: %hd", (settings->calibration[1].usCenter - txSignal.controlPacket.rudder)   / div);
+			tft.print("RUD:");
 			tft.setCursor(80, 12 + 1 * 16);
-			tft.printf("ELV: %hd", (settings->calibration[2].usCenter - txSignal.controlPacket.elevator) / div);
+			tft.print("ELV:");
 			tft.setCursor(80, 12 + 2 * 16);
-			tft.printf("AIL: %hd", (settings->calibration[3].usCenter - txSignal.controlPacket.aileron)  / div);
+			tft.print("AIL:");
 			tft.setCursor(0, 12 + 3 * 16);
-			tft.printf("CH5: %hd", (settings->calibration[4].usCenter - txSignal.controlPacket.channel5) / div);
+			tft.print("CH5:");
+
+			constexpr int labelsWidth = 42;
+			tft.fillRect(0 + labelsWidth, 14, 80 - labelsWidth, 3 * 16, ST77XX_BLACK);
+			tft.fillRect(80 + labelsWidth, 14, 80 - labelsWidth, 3 * 16, ST77XX_BLACK);
+			tft.setCursor(0 + labelsWidth, 12 + 1 * 16);
+			tft.printf("%hd", (settings->calibration[0].usCenter - txSignal.controlPacket.throttle) / div);
+			tft.setCursor(0 + labelsWidth, 12 + 2 * 16);
+			tft.printf("%hd", (settings->calibration[1].usCenter - txSignal.controlPacket.rudder)   / div);
+			tft.setCursor(80 + labelsWidth, 12 + 1 * 16);
+			tft.printf("%hd", (settings->calibration[2].usCenter - txSignal.controlPacket.elevator) / div);
+			tft.setCursor(80 + labelsWidth, 12 + 2 * 16);
+			tft.printf("%hd", (settings->calibration[3].usCenter - txSignal.controlPacket.aileron)  / div);
+			tft.setCursor(0 + labelsWidth, 12 + 3 * 16);
+			tft.printf("%hd", (settings->calibration[4].usCenter - txSignal.controlPacket.channel5) / div);
 
 			tft.setFont(); // to default
-			tft.setCursor(0, 80 - 12);
+			tft.setCursor(6, 80 - 12);
+			tft.fillRect(40, 80 - 12, 8, 8, ST77XX_BLACK);
+			tft.fillRect(94, 80 - 12, 8, 8, ST77XX_BLACK);
+			tft.fillRect(148, 80 - 12, 8, 8, ST77XX_BLACK);
 			tft.printf(
 				"AUX1: %u  AUX2: %u  AUX3: %u", 
 				txSignal.controlPacket.aux1,

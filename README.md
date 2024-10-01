@@ -31,16 +31,12 @@ Interesting:
 
 ### To do
 
-1. pages:
-	1. transmitter battery, signal strength, receiver battery
-	2. raw analog values (done)
-	3. centered analog values, long press to remember current values as 0.
-	4. auto-calibration for raw analog values - move controls around, getting min/max values, to be used as 0% & 100%
-	5. manual calibration
-		+ move controls to select channel; viewing its name and 6 values.
-		+ then change with aileron/elevator
-		+ press F1 to save
-	6. reverse configuration - move controls to select, long press F1 to switch
+1. Fix throttle - allow zero being at min... or rather: there is no center value for it.
+2. Reduce blinking at `Page::Centered`
+3. Rework `Page::Reverse`: use right stick
+4. Hide some pages, unless starting with F1 pressed
+5. Reset to known values when starting with F1 pressed and some joystick state.
+6. Update README
 
 + "Hello" packet: transmitter asking for receiver, receiver accepts.
 + Update README to be actually useful and nice.

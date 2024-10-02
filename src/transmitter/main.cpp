@@ -241,17 +241,18 @@ AnalogChannel trySelectChannel()
 	return AnalogChannel::Unknown;
 }
 
-/// Returns pair of values representing deltas (from center) 
+/// Returns pair of values representing vague deltas (from center) 
 /// for specified joystick: X/Y, with values always growing 
-/// from left to right and top to bottom.
+/// from left to right and top to bottom. Those values are pre-calibrated,
+/// not affected by internal calibration.
 std::tuple<int16_t, int16_t> getJoystickDeltas(bool right)
 {
 	if (right) {
 		auto xAxisIdx = static_cast<int8_t>(AnalogChannel::Aileron);
 		auto yAxisIdx = static_cast<int8_t>(AnalogChannel::Elevator);
 		return {
-			rawAnalogValues[xAxisIdx] - settings->calibration[xAxisIdx].rawCenter,
-			rawAnalogValues[yAxisIdx] - settings->calibration[yAxisIdx].rawCenter,
+			rawAnalogValues[xAxisIdx] - 1101,
+			rawAnalogValues[yAxisIdx] - 1063,
 		};
 	}
 	else /* left */ {
@@ -259,15 +260,13 @@ std::tuple<int16_t, int16_t> getJoystickDeltas(bool right)
 		auto xAxisIdx = static_cast<int8_t>(AnalogChannel::Rudder);
 		auto yAxisIdx = static_cast<int8_t>(AnalogChannel::Throttle);
 		return {
-			rawAnalogValues[xAxisIdx] - settings->calibration[xAxisIdx].rawCenter,
-			settings->calibration[yAxisIdx].rawCenter - rawAnalogValues[yAxisIdx],
+			rawAnalogValues[xAxisIdx] - 1047,
+			1145 - rawAnalogValues[yAxisIdx],
 		};
 	}
 }
 
-/// Returns pair of values representing deltas (from center) from the other 
-/// than currently selected joystick: X/Y, with values always growing 
-/// from left to right and top to bottom.
+/// Like `getJoystickDeltas`, but the other than currently selected joystick.
 std::tuple<int16_t, int16_t> getOtherThanSelectedJoystickDeltas()
 {
 	switch (selectedChannel) {

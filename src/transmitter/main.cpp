@@ -137,6 +137,7 @@ void goNextPage()
 }
 
 unsigned long f1ButtonPressed = 0; // 0 means not pressed
+constexpr unsigned long longPressDuration = 777; // ms
 uint16_t rawAnalogValues[6];
 uint16_t mappedValues[6];
 
@@ -353,16 +354,24 @@ void loop()
 			// Waiting for release
 		}
 		else /* released */ {
-			if (now - f1ButtonPressed > 1023) /* long press finished */ {
+			if (now - f1ButtonPressed > longPressDuration) /* long press finished */ {
 				wasLongPress = true;
 			}
 			else /* short press finished */ {
+				switch (page) {
+					case Page::Calibrate: {
+						if (settings->prepareForSave())
+							EEPROM.commit();
+					}
+					default:
+						break;
+				}
 				goNextPage();
 				tft.fillScreen(ST77XX_BLACK);
 				switch (page) {
 					case Page::Calibrate: {
-						selectedChannel = AnalogChannel::Unknown;
-						parameterSelected = 0;
+						selectedChannel = AnalogChannel::Throttle;
+						parameterSelected = 6; // channel selection
 						extraBias = 0;
 						break;
 					}
@@ -501,95 +510,102 @@ void loop()
 		}
 		case Page::Calibrate: {
 			tft.setCursor(0, 0);
-			tft.printf(page == Page::Calibrate ? "Kalibracja" : "Odwracanie");
-			if (selectedChannel == AnalogChannel::Unknown) {
-				tft.setCursor(20, 20);
-				tft.printf("Wybierz kanal");
-				selectedChannel = trySelectChannel();
-				if (selectedChannel != AnalogChannel::Unknown)
-					tft.fillScreen(ST77XX_BLACK);
+			tft.printf("Kalibracja");
+
+			constexpr auto channelX = 12;
+			constexpr auto channelY = 12;
+			constexpr auto currentsY = 24;
+			constexpr auto valuesY = 40;
+
+			// Print current value (raw & mapped)
+			tft.fillRect(2 + 24, currentsY - 2, 32, 12, ST77XX_BLACK);
+			tft.setCursor(2, currentsY);
+			tft.printf("raw=%u\n", rawAnalogValues[static_cast<int8_t>(selectedChannel)]);
+			tft.fillRect(82 + 18, currentsY - 2, 32, 12, ST77XX_BLACK);
+			tft.setCursor(82, currentsY);
+			tft.printf("us=%u\n", mappedValues[static_cast<int8_t>(selectedChannel)]);
+
+			// Handle joystick input
+			auto& c = settings->calibration[static_cast<int8_t>(selectedChannel)];
+			const auto [x, y] = getOtherThanSelectedJoystickDeltas();
+			if (now - cooldownTime > 512) {
+				if (y < -100) {
+					parameterSelected = (parameterSelected + 6) % 7;
+					cooldownTime = now;
+				}
+				else if (100 < y) {
+					parameterSelected = (parameterSelected + 1) % 7;
+					cooldownTime = now;
+				}
 			}
-			else /* any channel selected */ {
-				auto& c = settings->calibration[static_cast<int8_t>(selectedChannel)];
-				tft.setCursor(20, 12);
-				tft.printf("Kanal: %s", channelNames[static_cast<int8_t>(selectedChannel)]);
-				if (parameterSelected == -1) {
-					tft.setCursor(20, 24);
-					tft.print("Zapisano!");
+			int delta = 0;
+			if (now - cooldownTime > (parameterSelected == 6 ? 512 : 32)) {
+				if (x < -100 || 100 < x) {
+					delta = x / 128;
+					cooldownTime = now;
 				}
-				else /* any parameter selected */ {
-					const auto [x, y] = getOtherThanSelectedJoystickDeltas();
-					if (x < -100 || 100 < x)
-						extraBias += x / 100;
+			}
+			// TODO: avoid using throttle joystick?
 
-					// TODO: move parameterSelected with y, but still require long press to save
-					// TODO: preview the calibration values below
-					// TODO: allow extraBias for potentiometers too
-					// TODO: warn if extraBias is invalid
-					// TODO: make the extraBias raise even slower closer to center
-					// TODO: remove Page::Reverse related dead code from here
+			// Clear dynamic fields
+			tft.fillRect(channelX + 40, channelY - 2, 76, 12, ST77XX_BLACK);
+			tft.fillRect(2 + 40, valuesY - 2, 32, 3 * 12, ST77XX_BLACK);
+			tft.fillRect(82 + 34, valuesY - 2, 32, 3 * 12, ST77XX_BLACK);
 
-					// Print current value (raw & mapped)
-					tft.fillRect(2 + 24, 24, 32, 12, ST77XX_BLACK);
-					tft.setCursor(2, 24);
-					tft.printf("raw=%u\n", rawAnalogValues[static_cast<int8_t>(selectedChannel)]);
-					tft.fillRect(82 + 18, 24, 32, 12, ST77XX_BLACK);
-					tft.setCursor(82, 24);
-					tft.printf("us=%u\n", mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias);
-
-					constexpr auto valuesStartY = 48;
-
-					// When in calibration mode, print ">" to mark the selected parameter
-					if (page == Page::Calibrate) {
-						constexpr uint16_t markColor = 0x7BEF; // gray
-						if (parameterSelected < 3)
-							tft.drawRect(0, valuesStartY - 2 + parameterSelected * 12, 76, 12, markColor);
-						else
-							tft.drawRect(80, valuesStartY - 2 + (parameterSelected - 3) * 12, 76, 12, markColor);
-					}
-
-					// Print the calibration values
-					tft.setCursor(2, valuesStartY + 0 * 12);
-					tft.printf("rawMin=%u", c.rawMin);
-					tft.setCursor(2, valuesStartY + 1 * 12);
-					tft.printf("rawCntr=%u", c.rawCenter);
-					tft.setCursor(2, valuesStartY + 2 * 12);
-					tft.printf("rawMax=%u", c.rawMax);
-					tft.setCursor(82, valuesStartY + 0 * 12);
-					tft.printf("usMin=%u", c.usMin);
-					tft.setCursor(82, valuesStartY + 1 * 12);
-					tft.printf("usCntr=%u", c.usCenter);
-					tft.setCursor(82, valuesStartY + 2 * 12);
-					tft.printf("usMax=%u", c.usMax);
+			// Mark the channel or selected parameter, and update the values by the way
+			constexpr uint16_t markColor = 0x7BEF; // gray
+			if (parameterSelected == 6) {
+				tft.drawRect(channelX + 40, channelY - 2, 76, 12, markColor);
+				if (delta != 0) {
+					if (delta < 0)
+						selectedChannel = static_cast<AnalogChannel>((static_cast<int8_t>(selectedChannel) + 4) % 5);
+					else
+						selectedChannel = static_cast<AnalogChannel>((static_cast<int8_t>(selectedChannel) + 1) % 5);
 				}
-				// On long press, save the current value as specific 
-				if (wasLongPress) {
-					if (page == Page::Calibrate) {
-						switch (parameterSelected++) {
-							case 0: c.rawMin    = rawAnalogValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
-							case 1: c.rawCenter = rawAnalogValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
-							case 2: c.rawMax    = rawAnalogValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
-							case 3: c.usMin     = mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
-							case 4: c.usCenter  = mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias; break;
-							case 5: // On last one, commit to the EEPROM and show "Saved" message
-								c.usMax = mappedValues[static_cast<int8_t>(selectedChannel)] + extraBias;
-								parameterSelected = -1; // to show "Saved" message
-								extraBias = 0;
-								settings->prepareForSave();
-								EEPROM.commit();
-								break;
-							default:
-								break;
-						}
-					}
-					else /* (page == Page::Reverse) */ {
-						auto tmp = c.usMin;
-						c.usMin = c.usMax;
-						c.usMax = tmp;
-						settings->prepareForSave();
-						EEPROM.commit();
-					}
-					tft.fillScreen(ST77XX_BLACK);
+			}
+			else {
+				if (parameterSelected < 3)
+					tft.drawRect(0, valuesY - 2 + parameterSelected * 12, 76, 12, markColor);
+				else
+					tft.drawRect(80, valuesY - 2 + (parameterSelected - 3) * 12, 76, 12, markColor);
+				switch (parameterSelected) {
+					case 0: c.rawMin    += delta; break;
+					case 1: c.rawCenter += delta; break;
+					case 2: c.rawMax    += delta; break;
+					case 3: c.usMin     += delta; break;
+					case 4: c.usCenter  += delta; break;
+					case 5: c.usMax     += delta; break;
+				}
+			}
+
+			// Print channel
+			tft.setCursor(channelX, channelY);
+			tft.printf("Kanal: %s", channelNames[static_cast<int8_t>(selectedChannel)]);
+
+			// Print the calibration values
+			tft.setCursor(2, valuesY + 0 * 12);
+			tft.printf("rawMin=%u", c.rawMin);
+			tft.setCursor(2, valuesY + 1 * 12);
+			tft.printf("rawCtr=%u", c.rawCenter);
+			tft.setCursor(2, valuesY + 2 * 12);
+			tft.printf("rawMax=%u", c.rawMax);
+			tft.setCursor(82, valuesY + 0 * 12);
+			tft.printf("usMin=%u", c.usMin);
+			tft.setCursor(82, valuesY + 1 * 12);
+			tft.printf("usCtr=%u", c.usCenter);
+			tft.setCursor(82, valuesY + 2 * 12);
+			tft.printf("usMax=%u", c.usMax);
+
+			// On long press select current value (most useful on raw analog values)
+			if (wasLongPress) {
+				switch (parameterSelected) {
+					case 0: c.rawMin    = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
+					case 1: c.rawCenter = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
+					case 2: c.rawMax    = rawAnalogValues[static_cast<int8_t>(selectedChannel)]; break;
+					case 3: c.usMin     = mappedValues[static_cast<int8_t>(selectedChannel)]; break;
+					case 4: c.usCenter  = mappedValues[static_cast<int8_t>(selectedChannel)]; break;
+					case 5: c.usMax     = mappedValues[static_cast<int8_t>(selectedChannel)]; break;
+					default: /* case 6: channel selection */ break;
 				}
 			}
 			break;

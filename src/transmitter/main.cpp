@@ -498,13 +498,13 @@ void loop()
 			);
 
 			if (wasLongPress) {
-				settings->calibration[0].usCenter = txSignal.controlPacket.throttle;
-				settings->calibration[1].usCenter = txSignal.controlPacket.rudder;
-				settings->calibration[2].usCenter = txSignal.controlPacket.elevator;
-				settings->calibration[3].usCenter = txSignal.controlPacket.aileron;
-				settings->calibration[4].usCenter = txSignal.controlPacket.channel5;
-				settings->prepareForSave();
-				EEPROM.commit();
+				settings->calibration[0].rawCenter = rawAnalogValues[0];
+				settings->calibration[1].rawCenter = rawAnalogValues[1];
+				settings->calibration[2].rawCenter = rawAnalogValues[2];
+				settings->calibration[3].rawCenter = rawAnalogValues[3];
+				settings->calibration[4].rawCenter = rawAnalogValues[4];
+				if (settings->prepareForSave())
+					EEPROM.commit();
 			}
 			break;
 		}
@@ -638,20 +638,20 @@ void loop()
 					selectedChannel = static_cast<AnalogChannel>((static_cast<int8_t>(selectedChannel) + 1) % 5);
 					cooldownTime = now;
 				}
-				if (x < -100 && reversed) {
+				else if (x < -100 && reversed) {
 					auto tmp = c.usMin;
 					c.usMin = c.usMax;
 					c.usMax = tmp;
-					settings->prepareForSave();
-					EEPROM.commit();
+					if (settings->prepareForSave())
+						EEPROM.commit();
 					cooldownTime = now;
 				}
 				else if (100 < x && !reversed) {
 					auto tmp = c.usMin;
 					c.usMin = c.usMax;
 					c.usMax = tmp;
-					settings->prepareForSave();
-					EEPROM.commit();
+					if (settings->prepareForSave())
+						EEPROM.commit();
 					cooldownTime = now;
 				}
 			}

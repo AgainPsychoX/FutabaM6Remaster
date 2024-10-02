@@ -6,7 +6,9 @@
 		"Futaba",
 		"HSPI",
 		"INITR",
+		"Kanal",
 		"SCLK",
+		"Sygnal",
 		"sygnalu"
 	],
 	"C_Cpp.errorSquiggles": "enabled"

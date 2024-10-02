@@ -116,6 +116,8 @@ Settings* settings;
 ////////////////////////////////////////////////////////////////////////////////
 // State
 
+bool advancedMode = false; // whenever to show advanced pages
+
 enum class Page : unsigned int
 {
 	Info,       // Transmitter & receiver battery and signal strength.
@@ -128,12 +130,27 @@ enum class Page : unsigned int
 };
 Page page = Page::Info;
 
+bool isPageAdvancedModeOnly(Page page)
+{
+	switch (page)
+	{
+		case Page::Info:
+		case Page::Centered:
+		case Page::Reverse:
+			return false;
+		default:
+			return true;
+	}
+}
+
 void goNextPage()
 {
-	page = static_cast<Page>(
-		(static_cast<unsigned int>(page) + 1) 
-			% static_cast<unsigned int>(Page::Count)
-	);
+	do {
+		page = static_cast<Page>(
+			(static_cast<unsigned int>(page) + 1) 
+				% static_cast<unsigned int>(Page::Count)
+		);
+	} while (!advancedMode && isPageAdvancedModeOnly(page)); 
 }
 
 unsigned long f1ButtonPressed = 0; // 0 means not pressed
@@ -178,6 +195,10 @@ void setup()
 	pinMode(BUZZER_PIN, OUTPUT);
 	digitalWrite(BUZZER_PIN, LOW);
 
+	// Special conditions
+	advancedMode = digitalRead(F1_PIN) == LOW;
+	bool resetToDefaults = advancedMode && analogRead(ELEVATOR_PIN) > 1300;
+
 	// Initialize the SPI interfaces
 	tft_spi.begin(TFT_SCLK, TFT_MISO, TFT_MOSI, TFT_CS);
 	tft_spi.setFrequency(20'000'000);
@@ -192,7 +213,7 @@ void setup()
 	// Initialize the EEPROM
 	EEPROM.begin(sizeof(Settings));
 	settings = reinterpret_cast<Settings*>(EEPROM.getDataPtr());
-	if (!settings->validate()) {
+	if (resetToDefaults || !settings->validate()) {
 		settings->resetToDefault();
 		settings->prepareForSave();
 		EEPROM.commit();

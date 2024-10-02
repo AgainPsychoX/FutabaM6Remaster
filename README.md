@@ -32,12 +32,9 @@ Interesting:
 ### To do
 
 1. Fix throttle - allow zero being at min... or rather: there is no center value for it.
-2. Reduce blinking at `Page::Centered`
-3. Rework `Page::Reverse`: use right stick
-4. Hide some pages, unless starting with F1 pressed
-5. Reset to known values when starting with F1 pressed and some joystick state.
-6. Update README
+2. Update README
 
 + "Hello" packet: transmitter asking for receiver, receiver accepts.
++ Automatic raw values calibration (moving stick to get min/max, and use mid as center).
 + Update README to be actually useful and nice.
 + Get rid of warnings from 3rd party code.

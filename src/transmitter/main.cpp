@@ -93,7 +93,7 @@ struct Settings
 	// 0x010 - 0x060: Calibration values
 
 	AnalogChannelsCalibration calibration = {
-		/* Throttle */ { .rawMin =  685, .rawCenter = 1145, .rawMax = 1647, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
+		/* Throttle */ { .rawMin =  685, .rawCenter = 685, .rawMax = 1647, .usMin = 1000, .usCenter = 1000, .usMax = 2000 },
 		/* Rudder   */ { .rawMin =  663, .rawCenter = 1047, .rawMax = 1427, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
 		/* Elevator */ { .rawMin =  633, .rawCenter = 1063, .rawMax = 1494, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
 		/* Aileron  */ { .rawMin =  662, .rawCenter = 1101, .rawMax = 1548, .usMin = 1000, .usCenter = 1500, .usMax = 2000 },
@@ -240,14 +240,17 @@ void setup()
 uint16_t mapAnalogValue(uint16_t value, AnalogChannelCalibrationData& calibration)
 {
 	// The safety constrain is applied in the receiver side, keeping servos in range 700-2300 us.
-#if 1 // Two curves based on min & center and center & max values
-	if (value < calibration.rawCenter)
-		return map(value, calibration.rawMin, calibration.rawCenter, calibration.usMin, calibration.usCenter);
-	else
-		return map(value, calibration.rawCenter, calibration.rawMax, calibration.usCenter, calibration.usMax);
-#else // Single linear curve based on min & max values
-	return map(value, calibration.rawMin, calibration.rawMax, calibration.usMin, calibration.usMax);
-#endif
+	if (calibration.rawMin == calibration.rawCenter) {
+		// Single linear curve based on min & max values
+		return map(value, calibration.rawMin, calibration.rawMax, calibration.usMin, calibration.usMax);
+	}
+	else /* rawMin != rawCenter */ {
+		// Two curves based on min & center and center & max values
+		if (value < calibration.rawCenter)
+			return map(value, calibration.rawMin, calibration.rawCenter, calibration.usMin, calibration.usCenter);
+		else
+			return map(value, calibration.rawCenter, calibration.rawMax, calibration.usCenter, calibration.usMax);
+	}
 }
 
 AnalogChannel trySelectChannel()
@@ -495,15 +498,15 @@ void loop()
 			tft.fillRect(0 + labelsWidth, 14, 80 - labelsWidth, 3 * 16, ST77XX_BLACK);
 			tft.fillRect(80 + labelsWidth, 14, 80 - labelsWidth, 3 * 16, ST77XX_BLACK);
 			tft.setCursor(0 + labelsWidth, 12 + 1 * 16);
-			tft.printf("%hd", (settings->calibration[0].usCenter - txSignal.controlPacket.throttle) / div);
+			tft.printf("%hd", (txSignal.controlPacket.throttle - settings->calibration[0].usCenter) / div);
 			tft.setCursor(0 + labelsWidth, 12 + 2 * 16);
-			tft.printf("%hd", (settings->calibration[1].usCenter - txSignal.controlPacket.rudder)   / div);
+			tft.printf("%hd", (txSignal.controlPacket.rudder   - settings->calibration[1].usCenter) / div);
 			tft.setCursor(80 + labelsWidth, 12 + 1 * 16);
-			tft.printf("%hd", (settings->calibration[2].usCenter - txSignal.controlPacket.elevator) / div);
+			tft.printf("%hd", (txSignal.controlPacket.elevator - settings->calibration[2].usCenter) / div);
 			tft.setCursor(80 + labelsWidth, 12 + 2 * 16);
-			tft.printf("%hd", (settings->calibration[3].usCenter - txSignal.controlPacket.aileron)  / div);
+			tft.printf("%hd", (txSignal.controlPacket.aileron  - settings->calibration[3].usCenter) / div);
 			tft.setCursor(0 + labelsWidth, 12 + 3 * 16);
-			tft.printf("%hd", (settings->calibration[4].usCenter - txSignal.controlPacket.channel5) / div);
+			tft.printf("%hd", (txSignal.controlPacket.channel5 - settings->calibration[4].usCenter) / div);
 
 			tft.setFont(); // to default
 			tft.setCursor(6, 80 - 12);

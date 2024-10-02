@@ -31,8 +31,7 @@ Interesting:
 
 ### To do
 
-1. Fix throttle - allow zero being at min... or rather: there is no center value for it.
-2. Update README
+1. Update README
 
 + "Hello" packet: transmitter asking for receiver, receiver accepts.
 + Automatic raw values calibration (moving stick to get min/max, and use mid as center).
